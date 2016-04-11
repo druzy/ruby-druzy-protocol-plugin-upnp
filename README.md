@@ -18,7 +18,7 @@ Or install it yourself as:
 
 Or for ubuntu run:
 
-    $ sudo add-apt-repository ppa:druzy_druzy/rubymita
+    $ sudo add-apt-repository ppa:druzy-druzy/rubymita
     $ sudo apt-get update
     $ sudo apt-get install ruby-druzy-protocol-plugin-upnp
 
