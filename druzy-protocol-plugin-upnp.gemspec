@@ -14,16 +14,15 @@ Gem::Specification.new do |spec|
   spec.homepage      = "https://github.com/druzy/ruby-druzy-protocol-plugin-upnp"
   spec.license       = "MIT"
 
-  spec.files         = Dir['lib/druzy/protocol/plugin/*.rb']+Dir['lib/druzy/protocol/plugin/upnp/*.rb']
+  spec.files         = `find lib -type f`.split("\n")
   spec.bindir        = "exe"
   spec.executables   = spec.files.grep(%r{^exe/}) { |f| File.basename(f) }
   spec.require_paths = ["lib"]
 
-  spec.add_runtime_dependency 'druzy-protocol', '>= 1.0.1'
+  spec.add_runtime_dependency 'druzy-protocol', '>= 1.0.2'
   spec.add_runtime_dependency 'druzy-server', '>= 1.0.0'
-  spec.add_runtime_dependency 'easy_upnp', '>= 0.2.3'
+  spec.add_runtime_dependency 'druzy-upnp', '>= 2.0.1'
   spec.add_runtime_dependency 'ruby-filemagic', '>= 0.7.1'
-  spec.add_runtime_dependency 'nokogiri', '>= 1.6.6.2'
 
   spec.add_development_dependency "bundler", "~> 1.10"
   spec.add_development_dependency "rake", "~> 10.0"

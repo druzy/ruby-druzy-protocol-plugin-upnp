@@ -1,8 +1,10 @@
-require 'druzy/protocol/plugin/upnp/version'
+require_relative 'upnp/version'
+
 require 'druzy/server'
-require 'easy_upnp/ssdp_searcher'
+require 'druzy/upnp/ssdp'
 require 'filemagic'
-require 'nokogiri'
+
+require 'druzy/protocol' if $0 == __FILE__
 
 module Druzy
   module Protocol
@@ -13,21 +15,14 @@ module Druzy
         
         class UpnpDiscoverer < Druzy::Protocol::Discoverer
           
-          @@urn_connection_manager='urn:schemas-upnp-org:service:ConnectionManager:1'
-          @@urn_rendering_control='urn:schemas-upnp-org:service:RenderingControl:1'
-          
-          def start_discoverer(delay=10, identifier=nil)
-            searcher = EasyUpnp::SsdpSearcher.new
-            devices = searcher.search('upnp:rootdevice')
-            for device in devices
-              begin
-                if device.all_services.include?(@@urn_connection_manager) && device.all_services.include?(@@urn_rendering_control) 
-                  if block_given?
-                    yield(UpnpRenderer.new(device))
-                  end
-                end             
-              rescue
-              
+          @@urn_media_renderer = "urn:schemas-upnp-org:device:MediaRenderer:1"
+                    
+          def start_discoverer(args={})
+            args[:delay] ||=10
+            args[:identifier] ||=@@urn_media_renderer
+            searcher = Druzy::Upnp::Ssdp.new.search(args[:identifier], args[:delay]) do |device|
+              if block_given?
+                yield UpnpRenderer.new(device)
               end
             end
           end
@@ -41,51 +36,41 @@ module Druzy
         
         class UpnpRenderer < Druzy::Protocol::Renderer
           
-          def initialize(easy_upnp)
-            @av_transport = easy_upnp.service('urn:schemas-upnp-org:service:AVTransport:1')
-            @rendering_control = easy_upnp.service('urn:schemas-upnp-org:service:RenderingControl:1')
-            @connection_manager = easy_upnp.service('urn:schemas-upnp-org:service:ConnectionManager:1')
+          def initialize(druzy_device)
+            @druzy_device =  druzy_device
+
             @av_transport_id=nil
             @connection_id=nil
             @rcs_id=nil
             
-            document = open(easy_upnp.service_definition(easy_upnp.all_services.first)[:location]) { |f| f.read }
-            xml = Nokogiri::XML(document)
-            xml.remove_namespaces!
-            url_base=xml.xpath("//URLBase").text
-            url_icon=url_base+xml.xpath("//device/iconList/icon/url").first.text
-            
-            super(easy_upnp.uuid,"upnp",easy_upnp.device_name,url_icon)
+            super(@druzy_device.udn,"upnp",@druzy_device.friendly_name,@druzy_device.icon_list.first)
             
           end
           
           def play
-            @av_transport.Play({:InstanceID => @av_transport_id, :Speed => "1"})
+            @druzy_device.AVTransport.Play("InstanceID" => @av_transport_id, "Speed" => 1)
           end
           
           def pause
-            @av_transport.Pause({:InstanceID => @av_transport_id})
+            @druzy_device.AVTransport.Pause("InstanceID" => @av_transport_id)
           end
           
           def stop
-            puts "dans stop"
-            puts @av_transport.Stop({:InstanceID => @av_transport_id})
-            puts "apres"
+            @druzy_device.AVTransport.Stop("InstanceID" => @av_transport_id)
           end
           
           def send(file)
             #vérification du protocol
-            protocols = @connection_manager.GetProtocolInfo[:Sink]
+            protocols = @druzy_device.ConnectionManager.GetProtocolInfo["Sink"]
             mimetype=FileMagic.new(FileMagic::MAGIC_MIME_TYPE).file(file)
             ask_protocol="http-get:*:"+mimetype+":*"
             if protocols[ask_protocol] != nil
-              if @connection_id == nil || @av_transport_id == nil || rcs_id == nil
-                ids=@connection_manager.PrepareForConnection({:RemoteProtocolInfo => ask_protocol, :PeerConnectionManager => "/", :PeerConnectionID => -1, :Direction => "Output"})
-                @connection_id = ids[:ConnectionID]
-                @av_transport_id = ids[:AVTransportID]
-                @rcs_id = ids[:RcsID] 
+              if @connection_id == nil || @av_transport_id == nil || @rcs_id == nil
+                ids=@druzy_device.ConnectionManager.PrepareForConnection("RemoteProtocolInfo" => ask_protocol, "PeerConnectionManager" => "/", "PeerConnectionID" => -1, "Direction" => "Output")
+                @connection_id = ids["ConnectionID"]
+                @av_transport_id = ids["AVTransportID"]
+                @rcs_id = ids["RcsID"] 
               end
-              
               #ajout du fichier au serveur
               r=Druzy::Server::RestrictedFileServer.instance(PORT)
               r.add_file(file)
@@ -104,7 +89,7 @@ module Druzy
   </item>
 </DIDL-Lite>)
               #envoie de l'url au renderer
-              @av_transport.SetAVTransportURI({:InstanceID => @av_transport_id, :CurrentURI => r.get_address(file), :CurrentURIMetaData => xml})
+              @druzy_device.AVTransport.SetAVTransportURI("InstanceID" => @av_transport_id, "CurrentURI" => r.get_address(file), "CurrentURIMetaData" => xml)
             end
               
           end
@@ -120,16 +105,10 @@ if __FILE__ == $0
  
   
   up=Druzy::Protocol::Plugin::Upnp::UpnpDiscoverer.new
-  up.start_discoverer{ |device|
-    device.send("/home/druzy/elliot.mp4")
-    device.play
-    sleep(10)
-    device.pause
-    sleep(5)
-    device.play
-    sleep(5)
-    device.stop
-  }
+  up.start_discoverer(:delay => 10, :identifier => "uuid:aad2b343-11c8-346d-dd41-065160c19d82") do |device|
+    puts device.identifier
+    puts device.name
+  end
   
   Thread.list.each{|t| t.join if t!=Thread.main}
 end
