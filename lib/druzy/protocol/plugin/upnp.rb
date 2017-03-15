@@ -47,6 +47,11 @@ module Druzy
 
             super(@druzy_device.udn,"upnp",@druzy_device.friendly_name,@druzy_device.icon_list.first)
 
+            @druzy_device.service_list.each do |service|
+              service.subscribe do |event|
+                puts event
+              end
+            end
           end
 
           def play
